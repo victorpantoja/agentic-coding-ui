@@ -9,14 +9,12 @@ networks:
 
 services:
   backend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: prod
-    restart: unless-stopped
+    image: agentic-dashboard:dev
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+    volumes:
+      - ./backend/app:/app/app
     environment:
       MCP_URL: ${MCP_URL:-http://mcp-server:8000/sse}
-      CORS_ORIGINS: '["http://localhost:80","http://frontend:80","http://localhost:5173"]'
     networks:
       - dashboard-net
       - sovereign-net
@@ -27,13 +25,12 @@ services:
       retries: 3
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: ../docker/Dockerfile.frontend
-      target: production
-    restart: unless-stopped
+    image: agentic-dashboard:frontend-dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     ports:
-      - "8090:80"
+      - "5173:5173"
     depends_on:
       backend:
         condition: service_healthy
