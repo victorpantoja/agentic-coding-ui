@@ -2,6 +2,8 @@ import { Brain, Zap, CheckCircle, Search, MessageSquare } from "lucide-react";
 import type { ContextEvent } from "@/types";
 import { Badge } from "@/components/ui/badge";
 
+// exported so SessionDashboard can use the same icons/colors in section headers
+
 export const EVENT_ICONS: Record<string, React.ReactNode> = {
   plan: <Brain className="h-4 w-4" />,
   test: <Zap className="h-4 w-4" />,
@@ -19,15 +21,11 @@ export const EVENT_COLORS: Record<string, string> = {
 };
 
 function EventBlock({ event }: { event: ContextEvent }) {
-  const color = EVENT_COLORS[event.event_type] ?? "text-muted-foreground";
-  const icon = EVENT_ICONS[event.event_type] ?? <Brain className="h-4 w-4" />;
   const ts = new Date(event.created_at).toLocaleString();
 
   return (
     <div className="border-l-2 border-border/50 pl-4 pb-6 last:pb-0">
       <div className="flex items-center gap-2 mb-1">
-        <span className={color}>{icon}</span>
-        <span className={`text-sm font-semibold capitalize ${color}`}>{event.event_type}</span>
         <Badge className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground border-0">
           {ts}
         </Badge>
