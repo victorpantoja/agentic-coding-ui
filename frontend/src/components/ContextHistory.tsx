@@ -72,7 +72,7 @@ export function ContextHistory({ events }: Props) {
   }
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="max-h-[32rem]">
       <div className="p-4 space-y-0">
         {events.map((event) => (
           <EventBlock key={event.id} event={event} />

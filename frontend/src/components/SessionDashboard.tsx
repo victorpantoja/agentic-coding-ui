@@ -1,18 +1,137 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Calendar, Moon, Search, Sun } from "lucide-react";
+import {
+  Activity,
+  Calendar,
+  ChevronDown,
+  Moon,
+  Search,
+  Sun,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { api } from "@/api/client";
 import { SessionCard } from "@/components/SessionCard";
 import { ContextHistory } from "@/components/ContextHistory";
 import { JsonPanel } from "@/components/JsonPanel";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useSessionWebSocket } from "@/hooks/useWebSocket";
 import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
+import type { SessionDetail } from "@/types";
 
 const PAGE_SIZE = 20;
+
+const ACTIVE_STATUSES = new Set(["active", "testing", "implementing", "reviewing"]);
+
+interface CollapsibleProps {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  badge?: string;
+}
+
+function CollapsibleSection({ title, children, defaultOpen = false, badge }: CollapsibleProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
+      >
+        <span className="flex items-center gap-2">
+          {title}
+          {badge && (
+            <span className="text-[10px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+              {badge}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", open && "rotate-180")}
+        />
+      </button>
+      {open && <div className="border-t border-border">{children}</div>}
+    </div>
+  );
+}
+
+function SessionDetailPanel({ detail, connected }: { detail: SessionDetail; connected: boolean }) {
+  const isLive = ACTIVE_STATUSES.has(detail.status);
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Header */}
+      <header className="px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-base leading-snug mb-1">{detail.request}</h2>
+            <p className="font-mono text-[11px] text-muted-foreground">{detail.id}</p>
+          </div>
+          <div className="shrink-0 flex flex-col items-end gap-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Badge className={cn("text-[10px] px-1.5 py-0", statusColor(detail.status))}>
+                {detail.status}
+              </Badge>
+              {isLive && connected ? (
+                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                  <Wifi className="h-3 w-3" />
+                  <span className="text-[10px]">Live</span>
+                </span>
+              ) : isLive && !connected ? (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <WifiOff className="h-3 w-3" />
+                  <span className="text-[10px]">Reconnecting…</span>
+                </span>
+              ) : null}
+            </div>
+            <span>Updated {formatRelativeDate(detail.updated_at)}</span>
+            <span>Created {formatRelativeDate(detail.created_at)}</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Collapsible sections */}
+      <ScrollArea className="flex-1">
+        <div className="p-6 space-y-3">
+          <CollapsibleSection
+            title="Context History"
+            badge={String(detail.context.length)}
+            defaultOpen
+          >
+            <ContextHistory events={detail.context} />
+          </CollapsibleSection>
+
+          {detail.plan && (
+            <CollapsibleSection title="Plan">
+              <JsonPanel label="plan" data={detail.plan} />
+            </CollapsibleSection>
+          )}
+
+          {detail.test_spec && (
+            <CollapsibleSection title="Tests">
+              <JsonPanel label="test spec" data={detail.test_spec} />
+            </CollapsibleSection>
+          )}
+
+          {detail.implementation && (
+            <CollapsibleSection title="Implementation">
+              <JsonPanel label="implementation" data={detail.implementation} />
+            </CollapsibleSection>
+          )}
+
+          {detail.review && (
+            <CollapsibleSection title="Review">
+              <JsonPanel label="review" data={detail.review} />
+            </CollapsibleSection>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
 
 interface Props {
   darkMode: boolean;
@@ -26,7 +145,6 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
-  // Debounce search: commit on Enter or blur, or just use live search
   const { data: sessionsResp, isLoading } = useQuery({
     queryKey: ["sessions", search, dateFrom, dateTo, page],
     queryFn: () =>
@@ -44,26 +162,11 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
   const total = sessionsResp?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const { data: sessionResp, isLoading: isLoadingDetail } = useQuery({
-    queryKey: ["session", activeId],
-    queryFn: () => api.getSession(activeId!),
-    enabled: activeId != null,
-  });
+  const { connected, detail, error } = useSessionWebSocket(activeId);
 
-  const detail = sessionResp?.data;
-
-  const handleSearch = (v: string) => {
-    setSearch(v);
-    setPage(1);
-  };
-  const handleDateFrom = (v: string) => {
-    setDateFrom(v);
-    setPage(1);
-  };
-  const handleDateTo = (v: string) => {
-    setDateTo(v);
-    setPage(1);
-  };
+  const handleSearch = (v: string) => { setSearch(v); setPage(1); };
+  const handleDateFrom = (v: string) => { setDateFrom(v); setPage(1); };
+  const handleDateTo = (v: string) => { setDateTo(v); setPage(1); };
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
@@ -132,7 +235,7 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             )}
             {!isLoading && sessions.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
-                {total === 0 ? "No sessions found." : "No sessions match your filters."}
+                No sessions found.
               </p>
             )}
             {sessions.map((session) => (
@@ -175,80 +278,22 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
       </aside>
 
       {/* Main panel */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {activeId ? (
-          <>
-            <header className="px-6 py-4 border-b border-border shrink-0">
-              {isLoadingDetail ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : detail ? (
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="font-semibold text-base leading-snug mb-1">{detail.request}</h2>
-                    <p className="font-mono text-[11px] text-muted-foreground">{detail.id}</p>
-                  </div>
-                  <div className="shrink-0 flex flex-col items-end gap-1 text-xs text-muted-foreground">
-                    <Badge className={cn("text-[10px] px-1.5 py-0", statusColor(detail.status))}>
-                      {detail.status}
-                    </Badge>
-                    <span>Updated {formatRelativeDate(detail.updated_at)}</span>
-                    <span>Created {formatRelativeDate(detail.created_at)}</span>
-                  </div>
-                </div>
-              ) : null}
-            </header>
-
-            {detail && (
-              <Tabs defaultValue="context" className="flex-1 flex flex-col min-h-0">
-                <TabsList className="mx-6 mt-4 w-fit">
-                  <TabsTrigger value="context">
-                    Context ({detail.context.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="plan" disabled={!detail.plan}>Plan</TabsTrigger>
-                  <TabsTrigger value="tests" disabled={!detail.test_spec}>Tests</TabsTrigger>
-                  <TabsTrigger value="implementation" disabled={!detail.implementation}>
-                    Implementation
-                  </TabsTrigger>
-                  <TabsTrigger value="review" disabled={!detail.review}>Review</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="context" className="flex-1 min-h-0 mx-6 mb-6">
-                  <div className="h-full rounded-lg border border-border overflow-hidden">
-                    <ContextHistory events={detail.context} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="plan" className="flex-1 min-h-0 mx-6 mb-6">
-                  <div className="h-full rounded-lg border border-border overflow-hidden">
-                    <JsonPanel label="plan" data={detail.plan} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="tests" className="flex-1 min-h-0 mx-6 mb-6">
-                  <div className="h-full rounded-lg border border-border overflow-hidden">
-                    <JsonPanel label="test spec" data={detail.test_spec} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="implementation" className="flex-1 min-h-0 mx-6 mb-6">
-                  <div className="h-full rounded-lg border border-border overflow-hidden">
-                    <JsonPanel label="implementation" data={detail.implementation} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="review" className="flex-1 min-h-0 mx-6 mb-6">
-                  <div className="h-full rounded-lg border border-border overflow-hidden">
-                    <JsonPanel label="review" data={detail.review} />
-                  </div>
-                </TabsContent>
-              </Tabs>
-            )}
-          </>
-        ) : (
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {!activeId ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <Activity className="h-12 w-12 opacity-20 mb-4" />
             <p className="text-lg font-medium opacity-50">Select a session to view</p>
           </div>
+        ) : error ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        ) : !detail ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+            <p className="text-sm">Connecting…</p>
+          </div>
+        ) : (
+          <SessionDetailPanel detail={detail} connected={connected} />
         )}
       </main>
     </div>

@@ -17,7 +17,7 @@ export function JsonPanel({ label, data }: Props) {
   }
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="max-h-[32rem]">
       <pre className="p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
         {JSON.stringify(data, null, 2)}
       </pre>

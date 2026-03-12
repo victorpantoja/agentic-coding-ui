@@ -12,6 +12,7 @@ from app.db.connection import close_pool, init_pool
 from app.health import routes as health_routes
 from app.sessions import routes as sessions_routes
 from app.sessions.exceptions import SessionNotFoundError
+from app.ws import routes as ws_routes
 
 
 def create_app(debug: bool = False) -> FastAPI:
@@ -47,5 +48,6 @@ def create_app(debug: bool = False) -> FastAPI:
 
     app.include_router(sessions_routes.router)
     app.include_router(health_routes.router)
+    app.include_router(ws_routes.router)
 
     return app

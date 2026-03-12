@@ -1,77 +1,59 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import type { AgentInstruction, SessionRecord, WsEvent } from "@/types";
+import { useEffect, useRef, useState } from "react";
+import type { ContextEvent, SessionDetail } from "@/types";
 
 export interface WsState {
   connected: boolean;
-  instructions: AgentInstruction[];
-  latestStatus: string | null;
+  detail: SessionDetail | null;
+  error: string | null;
 }
 
-export function useSessionWebSocket(
-  sessionId: string | null,
-  onSessionState?: (s: SessionRecord) => void
-): WsState {
-  const wsRef = useRef<WebSocket | null>(null);
+export function useSessionWebSocket(sessionId: string | null): WsState {
   const [connected, setConnected] = useState(false);
-  const [instructions, setInstructions] = useState<AgentInstruction[]>([]);
-  const [latestStatus, setLatestStatus] = useState<string | null>(null);
-
-  const handleMessage = useCallback(
-    (evt: MessageEvent<string>) => {
-      let data: unknown;
-      try {
-        data = JSON.parse(evt.data);
-      } catch {
-        return;
-      }
-
-      // Initial session state dump (has session_id key)
-      if (
-        data !== null &&
-        typeof data === "object" &&
-        "session_id" in data
-      ) {
-        const session = data as SessionRecord;
-        setInstructions(session.instructions);
-        setLatestStatus(session.status);
-        onSessionState?.(session);
-        return;
-      }
-
-      // WsEvent
-      const event = data as WsEvent;
-      if (event.type === "instruction") {
-        setInstructions((prev) => [
-          ...prev,
-          event.payload as unknown as AgentInstruction,
-        ]);
-      } else if (event.type === "status") {
-        const s = event.payload as { status: string };
-        setLatestStatus(s.status);
-      }
-    },
-    [onSessionState]
-  );
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    setDetail(null);
+    setError(null);
+    setConnected(false);
+
     if (!sessionId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(
-      `${protocol}://${window.location.host}/ws/${sessionId}`
-    );
+    const ws = new WebSocket(`${protocol}://${window.location.host}/ws/${sessionId}`);
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
-    ws.onmessage = handleMessage;
+    ws.onerror = () => {
+      setConnected(false);
+      setError("WebSocket connection failed");
+    };
+
+    ws.onmessage = (evt: MessageEvent<string>) => {
+      const msg: { type: string; data: unknown } = JSON.parse(evt.data);
+      if (msg.type === "session") {
+        setDetail(msg.data as SessionDetail);
+      } else if (msg.type === "context_event") {
+        setDetail((prev) =>
+          prev
+            ? { ...prev, context: [...prev.context, msg.data as ContextEvent] }
+            : null
+        );
+      } else if (msg.type === "status") {
+        setDetail((prev) =>
+          prev ? { ...prev, ...(msg.data as Partial<SessionDetail>) } : null
+        );
+      } else if (msg.type === "error") {
+        setError((msg.data as { detail: string }).detail);
+      }
+    };
 
     return () => {
       ws.close();
-      setConnected(false);
     };
-  }, [sessionId, handleMessage]);
+  }, [sessionId]);
 
-  return { connected, instructions, latestStatus };
+  return { connected, detail, error };
 }
