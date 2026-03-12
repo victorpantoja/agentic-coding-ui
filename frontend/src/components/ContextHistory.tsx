@@ -24,7 +24,7 @@ function EventBlock({ event }: { event: ContextEvent }) {
   const ts = new Date(event.created_at).toLocaleString();
 
   return (
-    <div className="border-l-2 border-border/50 pl-4 pb-6 last:pb-0">
+    <div className="pb-6 last:pb-0">
       <div className="flex items-center gap-2 mb-1">
         <Badge className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground border-0">
           {ts}
