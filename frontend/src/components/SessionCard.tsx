@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn, statusColor } from "@/lib/utils";
+import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
 
 interface Props {
   session: SessionRecord;
@@ -29,35 +29,39 @@ export function SessionCard({ session, active, onClick }: Props) {
         active && "border-primary ring-1 ring-primary/30"
       )}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{session.request}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {session.session_id.slice(0, 12)}…
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <p className="truncate text-sm font-medium flex-1 min-w-0">{session.request}</p>
+          <Badge className={cn("shrink-0 text-[10px] px-1.5 py-0", statusColor(session.status))}>
+            {session.status}
+          </Badge>
+        </div>
+
+        <p className="font-mono text-[10px] text-muted-foreground truncate mb-2">
+          {session.session_id}
+        </p>
+
+        <div className="flex items-end justify-between gap-2">
+          <div className="text-[11px] text-muted-foreground space-y-0.5 min-w-0">
+            <p>Updated {formatRelativeDate(session.updated_at)}</p>
+            <p>Created {formatRelativeDate(session.created_at)}</p>
+            <p>
+              {session.instructions.length} step
+              {session.instructions.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge className={statusColor(session.status)}>
-              {session.status}
-            </Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                abandon.mutate();
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              abandon.mutate();
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {session.instructions.length} instruction
-          {session.instructions.length !== 1 ? "s" : ""}
-        </p>
       </CardContent>
     </Card>
   );

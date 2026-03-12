@@ -22,6 +22,8 @@ export interface SessionRecord {
   request: string;
   status: SessionStatus;
   instructions: AgentInstruction[];
+  created_at: string;
+  updated_at: string;
 }
 
 export type WsEventType = "instruction" | "status" | "error";

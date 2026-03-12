@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.mcp.models import AgentInstruction
 from app.sessions.models import SessionRecord, SessionStatus
 
@@ -24,7 +26,7 @@ class SessionStore:
         return self._sessions.get(session_id)
 
     def list_all(self) -> list[SessionRecord]:
-        return list(self._sessions.values())
+        return sorted(self._sessions.values(), key=lambda s: s.updated_at, reverse=True)
 
     def append_instruction(
         self, session_id: str, instruction: AgentInstruction
@@ -32,11 +34,13 @@ class SessionStore:
         record = self._sessions[session_id]
         record.instructions.append(instruction)
         record.status = _STEP_STATUS.get(instruction.step, record.status)
+        record.updated_at = datetime.now(timezone.utc)
         return record
 
     def set_status(self, session_id: str, status: SessionStatus) -> SessionRecord:
         record = self._sessions[session_id]
         record.status = status
+        record.updated_at = datetime.now(timezone.utc)
         return record
 
     def delete(self, session_id: str) -> bool:

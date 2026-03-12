@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from app.mcp.models import AgentInstruction
 from app.sessions.adapters.session_store import SessionStore
 from app.sessions.models import SessionStatus
@@ -72,3 +74,41 @@ def test_delete_existing() -> None:
 
 def test_delete_missing() -> None:
     assert SessionStore().delete("nope") is False
+
+
+def test_create_sets_timestamps() -> None:
+    store = SessionStore()
+    before = datetime.now(timezone.utc)
+    record = store.create("s1", "req")
+    after = datetime.now(timezone.utc)
+    assert before <= record.created_at <= after
+    assert before <= record.updated_at <= after
+
+
+def test_append_instruction_updates_timestamp() -> None:
+    store = SessionStore()
+    record = store.create("s1", "req")
+    record.updated_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    old_ts = record.updated_at
+    store.append_instruction("s1", _mk("plan"))
+    assert store.get("s1").updated_at > old_ts  # type: ignore[union-attr]
+
+
+def test_set_status_updates_timestamp() -> None:
+    store = SessionStore()
+    record = store.create("s1", "req")
+    record.updated_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    old_ts = record.updated_at
+    store.set_status("s1", SessionStatus.approved)
+    assert store.get("s1").updated_at > old_ts  # type: ignore[union-attr]
+
+
+def test_list_all_sorted_by_updated_at_desc() -> None:
+    store = SessionStore()
+    r1 = store.create("s1", "r1")
+    r2 = store.create("s2", "r2")
+    r1.updated_at = datetime.now(timezone.utc) + timedelta(seconds=1)
+    result = store.list_all()
+    assert result[0].session_id == "s1"
+    assert result[1].session_id == "s2"
+    _ = r2  # referenced
