@@ -28,7 +28,7 @@ clean:
 
 # Run tests inside the dev container
 test:
-    docker run --rm -e MCP_URL=http://test-mcp/sse agentic-dashboard:dev
+    docker run --rm agentic-dashboard:dev
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 

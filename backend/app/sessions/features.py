@@ -1,193 +1,62 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from dataclasses import dataclass
+
+import asyncpg
 
 from app.common.features import BaseFeature
-from app.mcp.models import AgentInstruction
+from app.db import queries
 from app.sessions.exceptions import SessionNotFoundError
-from app.sessions.models import SessionRecord, SessionStatus
+from app.sessions.models import ContextEvent, SessionDetail, SessionSummary
 
 
 class ListSessionsFeature(BaseFeature):
-    class Command(BaseModel):
-        pass
+    @dataclass
+    class Command:
+        search: str = ""
+        date_from: str = ""
+        date_to: str = ""
+        page: int = 1
+        page_size: int = 20
 
-    class Result(BaseModel):
-        sessions: list[SessionRecord]
+    @dataclass
+    class Result:
+        sessions: list[SessionSummary]
+        total: int
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
 
     async def handle(self, command: Command) -> Result:
-        return self.Result(sessions=self._store.list_all())
+        rows, total = await queries.list_sessions(
+            self._pool,
+            search=command.search,
+            date_from=command.date_from,
+            date_to=command.date_to,
+            page=command.page,
+            page_size=command.page_size,
+        )
+        sessions = [SessionSummary(**row) for row in rows]
+        return self.Result(sessions=sessions, total=total)
 
 
 class GetSessionFeature(BaseFeature):
-    class Command(BaseModel):
+    @dataclass
+    class Command:
         session_id: str
 
-    class Result(BaseModel):
-        session: SessionRecord
+    @dataclass
+    class Result:
+        session: SessionDetail
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
 
     async def handle(self, command: Command) -> Result:
-        session = self._store.get(command.session_id)
-        if session is None:
+        row = await queries.get_session(self._pool, command.session_id)
+        if row is None:
             raise SessionNotFoundError(command.session_id)
+        context_rows = await queries.get_context_history(self._pool, command.session_id)
+        context = [ContextEvent(**r) for r in context_rows]
+        session = SessionDetail(**{**row, "context": context})
         return self.Result(session=session)
-
-
-class StartSessionFeature(BaseFeature):
-    class Command(BaseModel):
-        request: str
-        project_context: str | None = None
-        review_feedback: str | None = None
-
-    class Result(BaseModel):
-        session: SessionRecord
-        instruction: AgentInstruction
-
-    async def handle(self, command: Command) -> Result:
-        assert self._client is not None
-        assert self._manager is not None
-        instruction = await self._client.start_session(
-            request=command.request,
-            project_context=command.project_context,
-            review_feedback=command.review_feedback,
-        )
-        session = self._store.create(instruction.session_id, command.request)
-        self._store.append_instruction(instruction.session_id, instruction)
-        await self._manager.broadcast(
-            instruction.session_id,
-            {"type": "instruction", "payload": instruction.model_dump()},
-        )
-        return self.Result(session=session, instruction=instruction)
-
-
-class GetTestSpecFeature(BaseFeature):
-    class Command(BaseModel):
-        session_id: str
-        plan: str
-        scenario: str | None = None
-        existing_code: str | None = None
-        project_context: str | None = None
-
-    class Result(BaseModel):
-        instruction: AgentInstruction
-
-    async def handle(self, command: Command) -> Result:
-        assert self._client is not None
-        assert self._manager is not None
-        if self._store.get(command.session_id) is None:
-            raise SessionNotFoundError(command.session_id)
-        instruction = await self._client.get_test_spec(
-            plan=command.plan,
-            session_id=command.session_id,
-            scenario=command.scenario,
-            existing_code=command.existing_code,
-            project_context=command.project_context,
-        )
-        self._store.append_instruction(command.session_id, instruction)
-        await self._manager.broadcast(
-            command.session_id,
-            {"type": "instruction", "payload": instruction.model_dump()},
-        )
-        return self.Result(instruction=instruction)
-
-
-class ImplementLogicFeature(BaseFeature):
-    class Command(BaseModel):
-        session_id: str
-        test_code: str
-        test_file_path: str
-        error_output: str | None = None
-        existing_code: str | None = None
-
-    class Result(BaseModel):
-        instruction: AgentInstruction
-
-    async def handle(self, command: Command) -> Result:
-        assert self._client is not None
-        assert self._manager is not None
-        if self._store.get(command.session_id) is None:
-            raise SessionNotFoundError(command.session_id)
-        instruction = await self._client.implement_logic(
-            test_code=command.test_code,
-            test_file_path=command.test_file_path,
-            session_id=command.session_id,
-            error_output=command.error_output,
-            existing_code=command.existing_code,
-        )
-        self._store.append_instruction(command.session_id, instruction)
-        await self._manager.broadcast(
-            command.session_id,
-            {"type": "instruction", "payload": instruction.model_dump()},
-        )
-        return self.Result(instruction=instruction)
-
-
-class RunReviewFeature(BaseFeature):
-    class Command(BaseModel):
-        session_id: str
-        diff: str
-        changed_files: list[str] | None = None
-        plan: str | None = None
-        project_context: str | None = None
-
-    class Result(BaseModel):
-        instruction: AgentInstruction
-
-    async def handle(self, command: Command) -> Result:
-        assert self._client is not None
-        assert self._manager is not None
-        if self._store.get(command.session_id) is None:
-            raise SessionNotFoundError(command.session_id)
-        instruction = await self._client.run_review(
-            diff=command.diff,
-            session_id=command.session_id,
-            changed_files=command.changed_files,
-            plan=command.plan,
-            project_context=command.project_context,
-        )
-        self._store.append_instruction(command.session_id, instruction)
-        await self._manager.broadcast(
-            command.session_id,
-            {"type": "instruction", "payload": instruction.model_dump()},
-        )
-        return self.Result(instruction=instruction)
-
-
-class FetchContextFeature(BaseFeature):
-    class Command(BaseModel):
-        session_id: str
-        query: str
-        limit: int = 10
-
-    class Result(BaseModel):
-        instruction: AgentInstruction
-
-    async def handle(self, command: Command) -> Result:
-        assert self._client is not None
-        if self._store.get(command.session_id) is None:
-            raise SessionNotFoundError(command.session_id)
-        instruction = await self._client.fetch_context(
-            query=command.query,
-            session_id=command.session_id,
-            limit=command.limit,
-        )
-        return self.Result(instruction=instruction)
-
-
-class AbandonSessionFeature(BaseFeature):
-    class Command(BaseModel):
-        session_id: str
-
-    class Result(BaseModel):
-        status: str = "abandoned"
-
-    async def handle(self, command: Command) -> Result:
-        assert self._manager is not None
-        if self._store.get(command.session_id) is None:
-            raise SessionNotFoundError(command.session_id)
-        self._store.set_status(command.session_id, SessionStatus.abandoned)
-        await self._manager.broadcast(
-            command.session_id,
-            {"type": "status", "payload": {"status": "abandoned"}},
-        )
-        return self.Result()

@@ -1,58 +1,40 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.mcp.client import SovereignBrainClient
-from app.mcp.models import AgentInstruction
-from app.sessions.adapters.session_store import SessionStore
-from app.ws.manager import ConnectionManager
+from app.db.connection import get_pool
 
-MOCK_INSTRUCTION = AgentInstruction(
-    agent="architect",
-    system_prompt="You are an architect.",
-    user_message="Build a user service.",
-    action_required="Produce a plan.",
-    session_id="test-session-1",
-    step="plan",
-    context={},
-)
+
+def make_pool(
+    *,
+    fetchrow_return: object = None,
+    fetch_return: list[object] | None = None,
+) -> MagicMock:
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value=fetchrow_return)
+    pool.fetch = AsyncMock(return_value=fetch_return or [])
+    return pool
 
 
 @pytest.fixture
-def store() -> SessionStore:
-    return SessionStore()
+def mock_pool() -> MagicMock:
+    return make_pool()
 
 
 @pytest.fixture
-def manager() -> ConnectionManager:
-    return ConnectionManager()
+def test_client(mock_pool: MagicMock, mocker: object) -> TestClient:
+    import pytest_mock
 
+    assert isinstance(mocker, pytest_mock.MockerFixture)
+    mocker.patch("app.app.init_pool", new=AsyncMock())
+    mocker.patch("app.app.close_pool", new=AsyncMock())
 
-@pytest.fixture
-def mock_mcp() -> SovereignBrainClient:
-    client = SovereignBrainClient("http://test/sse")
-    client.start_session = AsyncMock(return_value=MOCK_INSTRUCTION)  # type: ignore[method-assign]
-    client.get_test_spec = AsyncMock(return_value=MOCK_INSTRUCTION)  # type: ignore[method-assign]
-    client.implement_logic = AsyncMock(return_value=MOCK_INSTRUCTION)  # type: ignore[method-assign]
-    client.run_review = AsyncMock(return_value=MOCK_INSTRUCTION)  # type: ignore[method-assign]
-    client.fetch_context = AsyncMock(return_value=MOCK_INSTRUCTION)  # type: ignore[method-assign]
-    return client
-
-
-@pytest.fixture
-def test_client(
-    store: SessionStore,
-    manager: ConnectionManager,
-    mock_mcp: SovereignBrainClient,
-) -> TestClient:
     from app.app import create_app
-    from app.sessions.routes import get_mcp_client, get_store, get_ws_manager
 
     app = create_app()
-    app.dependency_overrides[get_store] = lambda: store
-    app.dependency_overrides[get_ws_manager] = lambda: manager
-    app.dependency_overrides[get_mcp_client] = lambda: mock_mcp
-    return TestClient(app)
+    app.dependency_overrides[get_pool] = lambda: mock_pool
+    with TestClient(app) as client:
+        return client

@@ -14,7 +14,7 @@ services:
     volumes:
       - ./backend/app:/app/app
     environment:
-      MCP_URL: ${MCP_URL:-http://mcp-server:8000/sse}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://sovereign:sovereign@sovereign-brain-postgres:5432/sovereign_brain}
     networks:
       - dashboard-net
       - sovereign-net

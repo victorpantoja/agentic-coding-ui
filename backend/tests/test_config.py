@@ -5,19 +5,19 @@ from app.config import Settings
 
 def test_defaults() -> None:
     with pytest.MonkeyPatch.context() as mp:
-        mp.delenv("MCP_URL", raising=False)
+        mp.delenv("DATABASE_URL", raising=False)
         s = Settings()
-        assert s.mcp_url == "http://mcp-server:8000/sse"
-    assert s.port == 8080
-    assert s.debug is False
+        assert "sovereign_brain" in s.database_url
+        assert s.port == 8080
+        assert s.debug is False
 
 
 def test_env_override() -> None:
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("MCP_URL", "http://custom:9000/sse")
+        mp.setenv("DATABASE_URL", "postgresql://u:p@host/db")
         mp.setenv("PORT", "9090")
         mp.setenv("DEBUG", "true")
         s = Settings()
-        assert s.mcp_url == "http://custom:9000/sse"
+        assert s.database_url == "postgresql://u:p@host/db"
         assert s.port == 9090
         assert s.debug is True

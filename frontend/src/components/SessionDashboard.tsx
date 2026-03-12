@@ -1,18 +1,18 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Calendar, Moon, Search, Sun, Wifi, WifiOff } from "lucide-react";
+import { Activity, Calendar, Moon, Search, Sun } from "lucide-react";
 import { api } from "@/api/client";
 import { SessionCard } from "@/components/SessionCard";
-import { LiveMonologue } from "@/components/LiveMonologue";
-import { DiffViewer } from "@/components/DiffViewer";
+import { ContextHistory } from "@/components/ContextHistory";
+import { JsonPanel } from "@/components/JsonPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useSessionWebSocket } from "@/hooks/useWebSocket";
-import type { SessionRecord } from "@/types";
+import { Badge } from "@/components/ui/badge";
+import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 
 interface Props {
   darkMode: boolean;
@@ -26,37 +26,31 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
 
+  // Debounce search: commit on Enter or blur, or just use live search
   const { data: sessionsResp, isLoading } = useQuery({
-    queryKey: ["sessions"],
-    queryFn: api.listSessions,
-    refetchInterval: 5000,
+    queryKey: ["sessions", search, dateFrom, dateTo, page],
+    queryFn: () =>
+      api.listSessions({
+        search: search || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        page,
+        page_size: PAGE_SIZE,
+      }),
+    refetchInterval: 10_000,
   });
 
-  const sessions: SessionRecord[] = useMemo(() => {
-    const all = sessionsResp?.data ?? [];
-    return [...all].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
-  }, [sessionsResp]);
+  const sessions = sessionsResp?.data ?? [];
+  const total = sessionsResp?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return sessions.filter((s) => {
-      if (
-        q &&
-        !s.request.toLowerCase().includes(q) &&
-        !s.session_id.toLowerCase().includes(q)
-      )
-        return false;
-      if (dateFrom && new Date(s.updated_at) < new Date(dateFrom)) return false;
-      if (dateTo && new Date(s.updated_at) > new Date(dateTo + "T23:59:59Z")) return false;
-      return true;
-    });
-  }, [sessions, search, dateFrom, dateTo]);
+  const { data: sessionResp, isLoading: isLoadingDetail } = useQuery({
+    queryKey: ["session", activeId],
+    queryFn: () => api.getSession(activeId!),
+    enabled: activeId != null,
+  });
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const detail = sessionResp?.data;
 
   const handleSearch = (v: string) => {
     setSearch(v);
@@ -70,14 +64,6 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
     setDateTo(v);
     setPage(1);
   };
-
-  const { connected, instructions } = useSessionWebSocket(activeId);
-  const activeSession = sessions.find((s) => s.session_id === activeId);
-  const mergedInstructions = activeSession
-    ? activeSession.instructions.length >= instructions.length
-      ? activeSession.instructions
-      : instructions
-    : instructions;
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
@@ -108,7 +94,7 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Search by request or ID…"
+              placeholder="Search by request…"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -133,7 +119,7 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            {filtered.length} session{filtered.length !== 1 ? "s" : ""}
+            {total} session{total !== 1 ? "s" : ""}
             {search || dateFrom || dateTo ? " (filtered)" : ""}
           </p>
         </div>
@@ -144,19 +130,17 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             {isLoading && (
               <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>
             )}
-            {!isLoading && filtered.length === 0 && (
+            {!isLoading && sessions.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
-                {sessions.length === 0
-                  ? "No sessions yet."
-                  : "No sessions match your filters."}
+                {total === 0 ? "No sessions found." : "No sessions match your filters."}
               </p>
             )}
-            {paged.map((session) => (
+            {sessions.map((session) => (
               <SessionCard
-                key={session.session_id}
+                key={session.id}
                 session={session}
-                active={session.session_id === activeId}
-                onClick={() => setActiveId(session.session_id)}
+                active={session.id === activeId}
+                onClick={() => setActiveId(session.id)}
               />
             ))}
           </div>
@@ -168,19 +152,19 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             <Button
               variant="outline"
               size="sm"
-              disabled={safePage <= 1}
+              disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               className="h-7 text-xs px-3"
             >
               ← Prev
             </Button>
             <span className="text-xs text-muted-foreground">
-              {safePage} / {pageCount}
+              {page} / {pageCount}
             </span>
             <Button
               variant="outline"
               size="sm"
-              disabled={safePage >= pageCount}
+              disabled={page >= pageCount}
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               className="h-7 text-xs px-3"
             >
@@ -194,51 +178,76 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
       <main className="flex-1 flex flex-col min-w-0">
         {activeId ? (
           <>
-            <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-              <div className="min-w-0">
-                <h2 className="font-semibold truncate max-w-lg text-base">
-                  {activeSession?.request ?? activeId}
-                </h2>
-                <p className="text-xs font-mono text-muted-foreground mt-0.5">{activeId}</p>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs shrink-0 ml-4">
-                {connected ? (
-                  <>
-                    <Wifi className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                    <span className="text-green-600 dark:text-green-400">Live</span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-muted-foreground">Offline</span>
-                  </>
-                )}
-              </div>
+            <header className="px-6 py-4 border-b border-border shrink-0">
+              {isLoadingDetail ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : detail ? (
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="font-semibold text-base leading-snug mb-1">{detail.request}</h2>
+                    <p className="font-mono text-[11px] text-muted-foreground">{detail.id}</p>
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1 text-xs text-muted-foreground">
+                    <Badge className={cn("text-[10px] px-1.5 py-0", statusColor(detail.status))}>
+                      {detail.status}
+                    </Badge>
+                    <span>Updated {formatRelativeDate(detail.updated_at)}</span>
+                    <span>Created {formatRelativeDate(detail.created_at)}</span>
+                  </div>
+                </div>
+              ) : null}
             </header>
 
-            <Tabs defaultValue="monologue" className="flex-1 flex flex-col min-h-0">
-              <TabsList className="mx-6 mt-4 w-fit">
-                <TabsTrigger value="monologue">Live Monologue</TabsTrigger>
-                <TabsTrigger value="diff">Diff Viewer</TabsTrigger>
-              </TabsList>
+            {detail && (
+              <Tabs defaultValue="context" className="flex-1 flex flex-col min-h-0">
+                <TabsList className="mx-6 mt-4 w-fit">
+                  <TabsTrigger value="context">
+                    Context ({detail.context.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="plan" disabled={!detail.plan}>Plan</TabsTrigger>
+                  <TabsTrigger value="tests" disabled={!detail.test_spec}>Tests</TabsTrigger>
+                  <TabsTrigger value="implementation" disabled={!detail.implementation}>
+                    Implementation
+                  </TabsTrigger>
+                  <TabsTrigger value="review" disabled={!detail.review}>Review</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="monologue" className="flex-1 min-h-0 mx-6 mb-6">
-                <div className="h-full rounded-lg border border-border overflow-hidden">
-                  <LiveMonologue instructions={mergedInstructions} connected={connected} />
-                </div>
-              </TabsContent>
+                <TabsContent value="context" className="flex-1 min-h-0 mx-6 mb-6">
+                  <div className="h-full rounded-lg border border-border overflow-hidden">
+                    <ContextHistory events={detail.context} />
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="diff" className="flex-1 min-h-0 mx-6 mb-6">
-                <div className="h-full rounded-lg border border-border overflow-hidden">
-                  <DiffViewer instructions={mergedInstructions} />
-                </div>
-              </TabsContent>
-            </Tabs>
+                <TabsContent value="plan" className="flex-1 min-h-0 mx-6 mb-6">
+                  <div className="h-full rounded-lg border border-border overflow-hidden">
+                    <JsonPanel label="plan" data={detail.plan} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="tests" className="flex-1 min-h-0 mx-6 mb-6">
+                  <div className="h-full rounded-lg border border-border overflow-hidden">
+                    <JsonPanel label="test spec" data={detail.test_spec} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="implementation" className="flex-1 min-h-0 mx-6 mb-6">
+                  <div className="h-full rounded-lg border border-border overflow-hidden">
+                    <JsonPanel label="implementation" data={detail.implementation} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="review" className="flex-1 min-h-0 mx-6 mb-6">
+                  <div className="h-full rounded-lg border border-border overflow-hidden">
+                    <JsonPanel label="review" data={detail.review} />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <Activity className="h-12 w-12 opacity-20 mb-4" />
-            <p className="text-lg font-medium opacity-50">Select a session to monitor</p>
+            <p className="text-lg font-medium opacity-50">Select a session to view</p>
           </div>
         )}
       </main>

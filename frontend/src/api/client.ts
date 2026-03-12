@@ -1,4 +1,4 @@
-import type { AgentInstruction, SessionRecord } from "@/types";
+import type { SessionDetail, SessionSummary } from "@/types";
 
 const BASE = "/api";
 
@@ -17,12 +17,6 @@ export interface ListResponse<T> {
   total: number;
 }
 
-export interface StatusResponse {
-  success: boolean;
-  message?: string;
-  status?: string;
-}
-
 // ── HTTP helper ────────────────────────────────────────────────────────────
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -34,62 +28,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await res.text();
     throw new Error(`${res.status}: ${text}`);
   }
-  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
 // ── API calls ──────────────────────────────────────────────────────────────
 
-export const api = {
-  listSessions: () =>
-    request<ListResponse<SessionRecord>>("/sessions"),
+export interface ListSessionsParams {
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+  page?: number;
+  page_size?: number;
+}
 
-  createSession: (body: {
-    request: string;
-    project_context?: string;
-    review_feedback?: string;
-  }) =>
-    request<DataResponse<SessionRecord>>("/sessions", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+export const api = {
+  listSessions: (params?: ListSessionsParams) => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set("search", params.search);
+    if (params?.date_from) qs.set("date_from", params.date_from);
+    if (params?.date_to) qs.set("date_to", params.date_to);
+    if (params?.page != null) qs.set("page", String(params.page));
+    if (params?.page_size != null) qs.set("page_size", String(params.page_size));
+    const query = qs.toString() ? `?${qs}` : "";
+    return request<ListResponse<SessionSummary>>(`/sessions${query}`);
+  },
 
   getSession: (id: string) =>
-    request<DataResponse<SessionRecord>>(`/sessions/${id}`),
-
-  getTestSpec: (
-    id: string,
-    body: { plan: string; scenario?: string; existing_code?: string }
-  ) =>
-    request<DataResponse<AgentInstruction>>(`/sessions/${id}/test-spec`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  implement: (
-    id: string,
-    body: { test_code: string; test_file_path: string; error_output?: string }
-  ) =>
-    request<DataResponse<AgentInstruction>>(`/sessions/${id}/implement`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  review: (
-    id: string,
-    body: { diff: string; changed_files?: string[]; plan?: string }
-  ) =>
-    request<DataResponse<AgentInstruction>>(`/sessions/${id}/review`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  fetchContext: (id: string, body: { query: string; limit?: number }) =>
-    request<DataResponse<AgentInstruction>>(`/sessions/${id}/context`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  abandonSession: (id: string) =>
-    request<StatusResponse>(`/sessions/${id}`, { method: "DELETE" }),
+    request<DataResponse<SessionDetail>>(`/sessions/${id}`),
 };
