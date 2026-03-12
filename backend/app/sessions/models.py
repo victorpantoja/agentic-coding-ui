@@ -14,6 +14,16 @@ class SessionSummary(BaseModel):
     updated_at: datetime
 
 
+class SessionStep(BaseModel):
+    id: str
+    step_name: str
+    status: str
+    scheduled_at: datetime
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    error_details: str | None = None
+
+
 class ContextEvent(BaseModel):
     id: str
     event_type: str
@@ -33,3 +43,4 @@ class SessionDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     context: list[ContextEvent] = []
+    steps: list[SessionStep] = []

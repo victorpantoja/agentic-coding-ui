@@ -14,6 +14,16 @@ export interface ContextEvent {
   created_at: string;
 }
 
+export interface SessionStep {
+  id: string;
+  step_name: string;
+  status: "pending" | "running" | "finished" | "failed";
+  scheduled_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  error_details: string | null;
+}
+
 export interface SessionDetail {
   id: string;
   request: string;
@@ -25,4 +35,5 @@ export interface SessionDetail {
   created_at: string;
   updated_at: string;
   context: ContextEvent[];
+  steps: SessionStep[];
 }

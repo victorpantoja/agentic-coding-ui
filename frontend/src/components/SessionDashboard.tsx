@@ -5,13 +5,17 @@ import {
   Brain,
   Calendar,
   CheckCircle,
+  CheckCircle2,
   ChevronDown,
+  Clock,
+  Loader2,
   MessageSquare,
   Moon,
   Search,
   Sun,
   Wifi,
   WifiOff,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { api } from "@/api/client";
@@ -24,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSessionWebSocket } from "@/hooks/useWebSocket";
 import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
-import type { ContextEvent, SessionDetail } from "@/types";
+import type { ContextEvent, SessionDetail, SessionStep } from "@/types";
 
 const PAGE_SIZE = 20;
 const ACTIVE_STATUSES = new Set(["active", "testing", "implementing", "reviewing"]);
@@ -33,6 +37,7 @@ interface Section {
   key: string;
   title: string;
   eventType: string;
+  stepName: string | null;
   jsonField: keyof SessionDetail | null;
   icon: React.ReactNode;
   color: string;
@@ -43,6 +48,7 @@ const SECTIONS: Section[] = [
     key: "plan",
     title: "Plan",
     eventType: "plan",
+    stepName: "plan",
     jsonField: "plan",
     icon: EVENT_ICONS.plan ?? <Brain className="h-4 w-4" />,
     color: EVENT_COLORS.plan,
@@ -51,6 +57,7 @@ const SECTIONS: Section[] = [
     key: "tests",
     title: "Tests",
     eventType: "test",
+    stepName: "test",
     jsonField: "test_spec",
     icon: EVENT_ICONS.test ?? <Zap className="h-4 w-4" />,
     color: EVENT_COLORS.test,
@@ -59,6 +66,7 @@ const SECTIONS: Section[] = [
     key: "implementation",
     title: "Implementation",
     eventType: "implement",
+    stepName: "implement",
     jsonField: "implementation",
     icon: EVENT_ICONS.implement ?? <CheckCircle className="h-4 w-4" />,
     color: EVENT_COLORS.implement,
@@ -67,6 +75,7 @@ const SECTIONS: Section[] = [
     key: "review",
     title: "Review",
     eventType: "review",
+    stepName: "review",
     jsonField: "review",
     icon: EVENT_ICONS.review ?? <Search className="h-4 w-4" />,
     color: EVENT_COLORS.review,
@@ -75,11 +84,22 @@ const SECTIONS: Section[] = [
     key: "feedback",
     title: "Feedback",
     eventType: "feedback",
+    stepName: null,
     jsonField: null,
     icon: EVENT_ICONS.feedback ?? <MessageSquare className="h-4 w-4" />,
     color: EVENT_COLORS.feedback,
   },
 ];
+
+function StepStatusIcon({ status }: { status: SessionStep["status"] }) {
+  if (status === "finished")
+    return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />;
+  if (status === "running")
+    return <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />;
+  if (status === "failed")
+    return <XCircle className="h-4 w-4 text-destructive shrink-0" />;
+  return <Clock className="h-4 w-4 text-muted-foreground shrink-0" />;
+}
 
 interface CollapsibleProps {
   title: string;
@@ -88,6 +108,7 @@ interface CollapsibleProps {
   children: React.ReactNode;
   defaultOpen?: boolean;
   badge?: string;
+  step?: SessionStep;
 }
 
 function CollapsibleSection({
@@ -97,6 +118,7 @@ function CollapsibleSection({
   children,
   defaultOpen = true,
   badge,
+  step,
 }: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -112,6 +134,7 @@ function CollapsibleSection({
             {badge}
           </span>
         )}
+        {step && <StepStatusIcon status={step.status} />}
         <ChevronDown
           className={cn(
             "h-4 w-4 text-muted-foreground transition-transform shrink-0",
@@ -138,10 +161,13 @@ function SessionDetailPanel({
     return acc;
   }, {});
 
+  const stepByName = Object.fromEntries(detail.steps.map((s) => [s.step_name, s]));
+
   const visibleSections = SECTIONS.filter((s) => {
     const hasEvents = (eventsByType[s.eventType]?.length ?? 0) > 0;
     const hasJson = s.jsonField != null && detail[s.jsonField] != null;
-    return hasEvents || hasJson;
+    const hasStep = s.stepName != null && stepByName[s.stepName] != null;
+    return hasEvents || hasJson || hasStep;
   });
 
   return (
@@ -190,6 +216,8 @@ function SessionDetailPanel({
                 : null;
             const badge = events.length > 0 ? String(events.length) : undefined;
 
+            const step = section.stepName ? stepByName[section.stepName] : undefined;
+
             return (
               <CollapsibleSection
                 key={section.key}
@@ -197,6 +225,7 @@ function SessionDetailPanel({
                 icon={section.icon}
                 color={section.color}
                 badge={badge}
+                step={step}
                 defaultOpen
               >
                 <ContextHistory events={events} />

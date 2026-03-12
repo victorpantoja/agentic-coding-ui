@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ContextEvent, SessionDetail } from "@/types";
+import type { ContextEvent, SessionDetail, SessionStep } from "@/types";
 
 export interface WsState {
   connected: boolean;
@@ -40,6 +40,10 @@ export function useSessionWebSocket(sessionId: string | null): WsState {
           prev
             ? { ...prev, context: [...prev.context, msg.data as ContextEvent] }
             : null
+        );
+      } else if (msg.type === "steps") {
+        setDetail((prev) =>
+          prev ? { ...prev, steps: msg.data as SessionStep[] } : null
         );
       } else if (msg.type === "status") {
         setDetail((prev) =>

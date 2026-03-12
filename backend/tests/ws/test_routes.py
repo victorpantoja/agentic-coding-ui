@@ -20,21 +20,14 @@ _SESSION_ROW = {
     "updated_at": NOW,
 }
 
-_EVENT = {
-    "id": "e1",
-    "event_type": "plan",
-    "data": {"key": "val"},
-    "summary": "started",
-    "created_at": NOW,
-}
+_EVENT = {"id": "e1", "event_type": "plan", "data": {"key": "val"}, "summary": "started", "created_at": NOW}
+_EVENT2 = {"id": "e2", "event_type": "test", "data": {}, "summary": "tests written", "created_at": NOW}
 
-_EVENT2 = {
-    "id": "e2",
-    "event_type": "test",
-    "data": {},
-    "summary": "tests written",
-    "created_at": NOW,
+_STEP = {
+    "id": "st1", "step_name": "plan", "status": "pending",
+    "scheduled_at": NOW, "started_at": None, "ended_at": None, "error_details": None,
 }
+_STEP_RUNNING = {**_STEP, "status": "running"}
 
 
 def _make_sleep_wsd_on(n: int):
@@ -61,8 +54,9 @@ def test_ws_not_found(mock_pool: MagicMock, test_client: TestClient) -> None:
 def test_ws_initial_state(
     mock_pool: MagicMock, test_client: TestClient, mocker: object
 ) -> None:
+    # fetch order: context, steps
     mock_pool.fetchrow = AsyncMock(return_value=_SESSION_ROW)
-    mock_pool.fetch = AsyncMock(return_value=[_EVENT])
+    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_STEP]])
     mocker.patch("asyncio.sleep", side_effect=_make_sleep_wsd_on(1))  # type: ignore[attr-defined]
 
     with test_client.websocket_connect("/ws/s1") as ws:
@@ -71,14 +65,16 @@ def test_ws_initial_state(
     assert msg["type"] == "session"
     assert msg["data"]["id"] == "s1"
     assert len(msg["data"]["context"]) == 1
-    assert isinstance(msg["data"]["created_at"], str)  # datetime serialised
+    assert len(msg["data"]["steps"]) == 1
+    assert isinstance(msg["data"]["created_at"], str)
 
 
 def test_ws_poll_no_changes(
     mock_pool: MagicMock, test_client: TestClient, mocker: object
 ) -> None:
+    # fetch order: init_ctx, init_steps, poll_ctx, poll_steps
     mock_pool.fetchrow = AsyncMock(side_effect=[_SESSION_ROW, _SESSION_ROW])
-    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_EVENT]])
+    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_STEP], [_EVENT], [_STEP]])
     mocker.patch("asyncio.sleep", side_effect=_make_sleep_wsd_on(2))  # type: ignore[attr-defined]
 
     messages = []
@@ -86,14 +82,14 @@ def test_ws_poll_no_changes(
         messages.append(ws.receive_json())  # "session"
 
     assert messages[0]["type"] == "session"
-    assert len(messages) == 1  # no new events or status change
+    assert len(messages) == 1
 
 
 def test_ws_new_context_event(
     mock_pool: MagicMock, test_client: TestClient, mocker: object
 ) -> None:
     mock_pool.fetchrow = AsyncMock(side_effect=[_SESSION_ROW, _SESSION_ROW])
-    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_EVENT, _EVENT2]])
+    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_STEP], [_EVENT, _EVENT2], [_STEP]])
     mocker.patch("asyncio.sleep", side_effect=_make_sleep_wsd_on(2))  # type: ignore[attr-defined]
 
     messages = []
@@ -106,12 +102,29 @@ def test_ws_new_context_event(
     assert messages[1]["data"]["id"] == "e2"
 
 
+def test_ws_step_status_change(
+    mock_pool: MagicMock, test_client: TestClient, mocker: object
+) -> None:
+    mock_pool.fetchrow = AsyncMock(side_effect=[_SESSION_ROW, _SESSION_ROW])
+    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_STEP], [_EVENT], [_STEP_RUNNING]])
+    mocker.patch("asyncio.sleep", side_effect=_make_sleep_wsd_on(2))  # type: ignore[attr-defined]
+
+    messages = []
+    with test_client.websocket_connect("/ws/s1") as ws:
+        messages.append(ws.receive_json())  # "session"
+        messages.append(ws.receive_json())  # "steps"
+
+    assert messages[0]["type"] == "session"
+    assert messages[1]["type"] == "steps"
+    assert messages[1]["data"][0]["status"] == "running"
+
+
 def test_ws_status_change(
     mock_pool: MagicMock, test_client: TestClient, mocker: object
 ) -> None:
     approved = {**_SESSION_ROW, "status": "approved"}
     mock_pool.fetchrow = AsyncMock(side_effect=[_SESSION_ROW, approved])
-    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_EVENT]])
+    mock_pool.fetch = AsyncMock(side_effect=[[_EVENT], [_STEP], [_EVENT], [_STEP]])
     mocker.patch("asyncio.sleep", side_effect=_make_sleep_wsd_on(2))  # type: ignore[attr-defined]
 
     messages = []

@@ -69,6 +69,28 @@ async def get_session(
     return d
 
 
+async def get_session_steps(
+    pool: asyncpg.Pool,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    rows = await pool.fetch(
+        """
+        SELECT id::text, step_name, status, scheduled_at, started_at, ended_at, error_details
+        FROM session_steps
+        WHERE session_id = $1::uuid
+        ORDER BY
+            CASE step_name
+                WHEN 'plan'      THEN 1
+                WHEN 'test'      THEN 2
+                WHEN 'implement' THEN 3
+                WHEN 'review'    THEN 4
+            END
+        """,
+        session_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def get_context_history(
     pool: asyncpg.Pool,
     session_id: str,

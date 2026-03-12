@@ -63,7 +63,7 @@ def test_list_sessions_query_params(mock_pool: MagicMock, test_client: TestClien
 
 def test_get_session_found(mock_pool: MagicMock, test_client: TestClient) -> None:
     mock_pool.fetchrow = AsyncMock(return_value=_SESSION_DETAIL)
-    mock_pool.fetch = AsyncMock(return_value=[])
+    mock_pool.fetch = AsyncMock(side_effect=[[], []])  # context, steps
     resp = test_client.get("/api/sessions/s1")
     assert resp.status_code == 200
     assert resp.json()["data"]["id"] == "s1"

@@ -127,3 +127,23 @@ async def test_get_context_history_jsonb_as_string() -> None:
     pool = _pool(fetch_return=[event])
     result = await queries.get_context_history(pool, "sid")
     assert result[0]["data"] == {"agent": "architect"}
+
+
+# ── get_session_steps ─────────────────────────────────────────────────────────
+
+async def test_get_session_steps_empty() -> None:
+    pool = _pool(fetch_return=[])
+    result = await queries.get_session_steps(pool, "sid")
+    assert result == []
+
+
+async def test_get_session_steps_returns_rows() -> None:
+    step = {
+        "id": "st1", "step_name": "plan", "status": "pending",
+        "scheduled_at": NOW, "started_at": None, "ended_at": None, "error_details": None,
+    }
+    pool = _pool(fetch_return=[step])
+    result = await queries.get_session_steps(pool, "sid")
+    assert len(result) == 1
+    assert result[0]["step_name"] == "plan"
+    assert result[0]["status"] == "pending"
