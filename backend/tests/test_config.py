@@ -4,8 +4,10 @@ from app.config import Settings
 
 
 def test_defaults() -> None:
-    s = Settings()
-    assert s.mcp_url == "http://mcp-server:8000/sse"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.delenv("MCP_URL", raising=False)
+        s = Settings()
+        assert s.mcp_url == "http://mcp-server:8000/sse"
     assert s.port == 8080
     assert s.debug is False
 

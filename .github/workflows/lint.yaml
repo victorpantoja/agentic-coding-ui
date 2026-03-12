@@ -10,35 +10,34 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
+    env:
+      DEV_IMAGE: agentic-dashboard:dev
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Build dev image
+        run: |
+          docker build \
+            --target dev \
+            -t ${DEV_IMAGE} \
+            -f docker/Dockerfile \
+            .
 
       - name: Lint with ruff
-        working-directory: backend
         run: |
-          uv run --extra dev ruff check app/ tests/ --diff
+          docker run --rm ${DEV_IMAGE} uv run ruff check app/ tests/ --diff
           echo "No issues found with Ruff"
 
-      - name: Format with ruff
-        working-directory: backend
+      - name: Format check with ruff
         run: |
-          uv run --extra dev ruff format --check app/ tests/ --diff
+          docker run --rm ${DEV_IMAGE} uv run ruff format --check app/ tests/ --diff
           echo "No formatting issues found"
 
       - name: Type check with mypy
-        working-directory: backend
         run: |
-          uv run --extra dev mypy app/
+          docker run --rm ${DEV_IMAGE} uv run mypy app/
           echo "No issues found with mypy"

@@ -96,7 +96,6 @@ export function DiffViewer({ instructions }: Props) {
                 <div key={hi}>
                   <div className="bg-blue-950/50 text-blue-400 px-4 py-0.5 font-mono text-xs">
                     @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
-                    {hunk.linedelimiters ? "" : ""}
                   </div>
                   {hunk.lines.map((line, li) => (
                     <DiffLine key={li} line={line} />

@@ -1,5 +1,7 @@
 set dotenv-load := true
 
+DEV_IMAGE := "agentic-dashboard:dev"
+
 default:
     @just --list
 
@@ -10,12 +12,19 @@ network:
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
+# Build all images
 build: network
     docker compose build
 
+# Build the dev/test image
+build-dev:
+    docker build --target dev -t {{DEV_IMAGE}} -f docker/Dockerfile .
+
+# Build production backend image
 build-backend:
     docker build --target prod -t agentic-dashboard-backend:latest -f docker/Dockerfile .
 
+# Build frontend image
 build-frontend:
     docker compose build frontend
 
@@ -33,28 +42,35 @@ down:
 clean:
     docker compose down --rmi local --volumes --remove-orphans
 
-# ── Testing ───────────────────────────────────────────────────────────────────
+# ── Testing (runs inside Docker) ──────────────────────────────────────────────
 
-test:
-    docker build --target dev -t agentic-dashboard:test -f docker/Dockerfile .
-    docker run --rm -e MCP_URL=http://test-mcp/sse agentic-dashboard:test
+# Run full pytest suite with coverage inside the dev container
+test: build-dev
+    docker run --rm \
+        -e MCP_URL=http://test-mcp/sse \
+        {{DEV_IMAGE}}
 
-test-local:
-    cd backend && uv run pytest
+# ── Linting & type checking (runs inside Docker via uv run) ───────────────────
 
-# ── Linting & type checking ───────────────────────────────────────────────────
+# ruff lint check
+lint: build-dev
+    docker run --rm {{DEV_IMAGE}} uv run ruff check app/ tests/
 
-lint:
-    docker build --target dev -t agentic-dashboard:test -f docker/Dockerfile .
-    docker run --rm --entrypoint ruff agentic-dashboard:test check app/ tests/
+# ruff format check
+fmt-check: build-dev
+    docker run --rm {{DEV_IMAGE}} uv run ruff format --check app/ tests/
 
+# ruff auto-fix (runs locally via uv — modifies files)
 lint-fix:
     cd backend && uv run ruff check --fix app/ tests/
+    cd backend && uv run ruff format app/ tests/
 
-typecheck:
-    cd backend && uv run mypy app/
+# mypy strict type checking
+typecheck: build-dev
+    docker run --rm {{DEV_IMAGE}} uv run mypy app/
 
-check: lint typecheck
+# All quality checks
+check: lint fmt-check typecheck
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 
@@ -67,13 +83,7 @@ logs-backend:
 logs-frontend:
     docker compose logs -f frontend
 
-# ── Local development ─────────────────────────────────────────────────────────
-
-install:
-    cd backend && uv sync --extra dev
-
-dev-backend:
-    cd backend && uv run uvicorn app.main:app --reload --port 8080
+# ── Local dev frontend (no Docker needed for UI) ─────────────────────────────
 
 dev-frontend:
     cd frontend && npm install && npm run dev

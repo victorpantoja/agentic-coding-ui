@@ -1,33 +1,65 @@
-FROM python:3.12-slim AS base
+#################### Base image ####################
+FROM python:3.13.9-slim-bookworm AS base
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+ENV PYTHONUNBUFFERED=1
+ENV UV_LINK_MODE=copy
+ENV UV_COMPILE_BYTECODE=1
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 RUN adduser --disabled-password --home /app --shell /bin/bash app
+
 WORKDIR /app
 
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    PATH="/app/.venv/bin:$PATH"
 
-# ── Production ────────────────────────────────────────────────────────────────
+#################### Build stage - Production ####################
+FROM base AS builder-prod
+
+RUN --mount=type=bind,source=backend/uv.lock,target=uv.lock \
+    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
+    --mount=type=cache,target=/app/.cache/uv \
+    uv sync --no-dev --no-install-project --frozen
+
+
+#################### Build stage - Development ####################
+FROM base AS builder-dev
+
+RUN --mount=type=bind,source=backend/uv.lock,target=uv.lock \
+    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
+    --mount=type=cache,target=/app/.cache/uv \
+    uv sync --group dev --no-install-project --frozen
+
+
+#################### Production image ####################
 FROM base AS prod
 
-COPY backend/pyproject.toml ./
-RUN uv venv && uv pip install -e .
-
-COPY backend/app/ app/
-
 USER app
-EXPOSE 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
-# ── Development / Testing ─────────────────────────────────────────────────────
+COPY --from=builder-prod --chown=app:app /app/.venv/ /app/.venv/
+
+COPY backend/app app
+
+COPY --chown=app:app docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+
+#################### Development image ####################
 FROM base AS dev
 
-COPY backend/pyproject.toml backend/.ruff.toml backend/.mypy.ini ./
-RUN uv venv && uv pip install -e ".[dev]"
+USER app
 
-COPY backend/app/ app/
-COPY backend/tests/ tests/
+COPY --from=builder-dev --chown=app:app /app/.venv/ /app/.venv/
 
-CMD ["uv", "run", "pytest"]
+COPY backend/app app
+COPY backend/tests tests
+COPY backend/pyproject.toml pyproject.toml
+
+COPY backend/.ruff.toml .ruff.toml
+COPY backend/.mypy.ini .mypy.ini
+
+COPY --chown=app:app docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["pytest"]

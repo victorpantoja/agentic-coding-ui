@@ -29,9 +29,11 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+      target: production
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8090:80"
     depends_on:
       backend:
         condition: service_healthy
