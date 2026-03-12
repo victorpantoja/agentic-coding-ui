@@ -1,0 +1,44 @@
+name: Lint Check
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '*'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Lint with ruff
+        working-directory: backend
+        run: |
+          uv run --extra dev ruff check app/ tests/ --diff
+          echo "No issues found with Ruff"
+
+      - name: Format with ruff
+        working-directory: backend
+        run: |
+          uv run --extra dev ruff format --check app/ tests/ --diff
+          echo "No formatting issues found"
+
+      - name: Type check with mypy
+        working-directory: backend
+        run: |
+          uv run --extra dev mypy app/
+          echo "No issues found with mypy"

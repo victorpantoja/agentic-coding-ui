@@ -1,0 +1,19 @@
+# Root-level tooling config for editors and CI that run from the repo root
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+ignore_missing_imports = true
+files = ["backend/app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests"]
+addopts = "--cov=backend/app --cov-report=term-missing --cov-fail-under=100"

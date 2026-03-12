@@ -1,0 +1,19 @@
+name: Dead Code Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  vulture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Vulture
+        uses: gtkacz/vulture-action@1.0.0
+        with:
+          args: 'backend/ --min-confidence 80 --exclude "tests"'

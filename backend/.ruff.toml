@@ -1,0 +1,16 @@
+include = ["app/**/*.py", "tests/**/*.py"]
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "N",  # pep8-naming
+    "UP", # pyupgrade
+    "SIM",# flake8-simplify
+]
