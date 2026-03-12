@@ -1,4 +1,3 @@
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileCode2 } from "lucide-react";
 
 interface Props {
@@ -17,10 +16,8 @@ export function JsonPanel({ label, data }: Props) {
   }
 
   return (
-    <ScrollArea className="max-h-[32rem]">
-      <pre className="p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </ScrollArea>
+    <pre className="p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words overflow-x-auto">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 }

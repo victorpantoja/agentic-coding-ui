@@ -1,10 +1,8 @@
-import { useEffect, useRef } from "react";
 import { Brain, Zap, CheckCircle, Search, MessageSquare } from "lucide-react";
 import type { ContextEvent } from "@/types";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
-const EVENT_ICONS: Record<string, React.ReactNode> = {
+export const EVENT_ICONS: Record<string, React.ReactNode> = {
   plan: <Brain className="h-4 w-4" />,
   test: <Zap className="h-4 w-4" />,
   implement: <CheckCircle className="h-4 w-4" />,
@@ -12,7 +10,7 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
   feedback: <MessageSquare className="h-4 w-4" />,
 };
 
-const EVENT_COLORS: Record<string, string> = {
+export const EVENT_COLORS: Record<string, string> = {
   plan: "text-violet-500",
   test: "text-yellow-500",
   implement: "text-green-500",
@@ -38,7 +36,7 @@ function EventBlock({ event }: { event: ContextEvent }) {
         <p className="text-sm text-foreground/80 mb-2">{event.summary}</p>
       )}
       {Object.keys(event.data).length > 0 && (
-        <details className="group">
+        <details>
           <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
             Data ↓
           </summary>
@@ -56,29 +54,12 @@ interface Props {
 }
 
 export function ContextHistory({ events }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events.length]);
-
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 py-12">
-        <Brain className="h-8 w-8 opacity-30" />
-        <p className="text-sm">No context history.</p>
-      </div>
-    );
-  }
-
+  if (events.length === 0) return null;
   return (
-    <ScrollArea className="max-h-[32rem]">
-      <div className="p-4 space-y-0">
-        {events.map((event) => (
-          <EventBlock key={event.id} event={event} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-    </ScrollArea>
+    <div className="p-4 space-y-0">
+      {events.map((event) => (
+        <EventBlock key={event.id} event={event} />
+      ))}
+    </div>
   );
 }

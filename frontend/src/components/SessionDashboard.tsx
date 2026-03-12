@@ -2,17 +2,21 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  Brain,
   Calendar,
+  CheckCircle,
   ChevronDown,
+  MessageSquare,
   Moon,
   Search,
   Sun,
   Wifi,
   WifiOff,
+  Zap,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { SessionCard } from "@/components/SessionCard";
-import { ContextHistory } from "@/components/ContextHistory";
+import { ContextHistory, EVENT_COLORS, EVENT_ICONS } from "@/components/ContextHistory";
 import { JsonPanel } from "@/components/JsonPanel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
@@ -20,37 +24,99 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSessionWebSocket } from "@/hooks/useWebSocket";
 import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
-import type { SessionDetail } from "@/types";
+import type { ContextEvent, SessionDetail } from "@/types";
 
 const PAGE_SIZE = 20;
-
 const ACTIVE_STATUSES = new Set(["active", "testing", "implementing", "reviewing"]);
+
+interface Section {
+  key: string;
+  title: string;
+  eventType: string;
+  jsonField: keyof SessionDetail | null;
+  icon: React.ReactNode;
+  color: string;
+}
+
+const SECTIONS: Section[] = [
+  {
+    key: "plan",
+    title: "Plan",
+    eventType: "plan",
+    jsonField: "plan",
+    icon: EVENT_ICONS.plan ?? <Brain className="h-4 w-4" />,
+    color: EVENT_COLORS.plan,
+  },
+  {
+    key: "tests",
+    title: "Tests",
+    eventType: "test",
+    jsonField: "test_spec",
+    icon: EVENT_ICONS.test ?? <Zap className="h-4 w-4" />,
+    color: EVENT_COLORS.test,
+  },
+  {
+    key: "implementation",
+    title: "Implementation",
+    eventType: "implement",
+    jsonField: "implementation",
+    icon: EVENT_ICONS.implement ?? <CheckCircle className="h-4 w-4" />,
+    color: EVENT_COLORS.implement,
+  },
+  {
+    key: "review",
+    title: "Review",
+    eventType: "review",
+    jsonField: "review",
+    icon: EVENT_ICONS.review ?? <Search className="h-4 w-4" />,
+    color: EVENT_COLORS.review,
+  },
+  {
+    key: "feedback",
+    title: "Feedback",
+    eventType: "feedback",
+    jsonField: null,
+    icon: EVENT_ICONS.feedback ?? <MessageSquare className="h-4 w-4" />,
+    color: EVENT_COLORS.feedback,
+  },
+];
 
 interface CollapsibleProps {
   title: string;
+  icon: React.ReactNode;
+  color: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
   badge?: string;
 }
 
-function CollapsibleSection({ title, children, defaultOpen = false, badge }: CollapsibleProps) {
+function CollapsibleSection({
+  title,
+  icon,
+  color,
+  children,
+  defaultOpen = true,
+  badge,
+}: CollapsibleProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
+        className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
       >
-        <span className="flex items-center gap-2">
-          {title}
-          {badge && (
-            <span className="text-[10px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">
-              {badge}
-            </span>
-          )}
-        </span>
+        <span className={cn("shrink-0", color)}>{icon}</span>
+        <span className="flex-1">{title}</span>
+        {badge && (
+          <span className="text-[10px] bg-muted text-muted-foreground rounded px-1.5 py-0.5">
+            {badge}
+          </span>
+        )}
         <ChevronDown
-          className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", open && "rotate-180")}
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform shrink-0",
+            open && "rotate-180"
+          )}
         />
       </button>
       {open && <div className="border-t border-border">{children}</div>}
@@ -58,8 +124,25 @@ function CollapsibleSection({ title, children, defaultOpen = false, badge }: Col
   );
 }
 
-function SessionDetailPanel({ detail, connected }: { detail: SessionDetail; connected: boolean }) {
+function SessionDetailPanel({
+  detail,
+  connected,
+}: {
+  detail: SessionDetail;
+  connected: boolean;
+}) {
   const isLive = ACTIVE_STATUSES.has(detail.status);
+
+  const eventsByType = detail.context.reduce<Record<string, ContextEvent[]>>((acc, e) => {
+    (acc[e.event_type] ??= []).push(e);
+    return acc;
+  }, {});
+
+  const visibleSections = SECTIONS.filter((s) => {
+    const hasEvents = (eventsByType[s.eventType]?.length ?? 0) > 0;
+    const hasJson = s.jsonField != null && detail[s.jsonField] != null;
+    return hasEvents || hasJson;
+  });
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -93,40 +176,39 @@ function SessionDetailPanel({ detail, connected }: { detail: SessionDetail; conn
         </div>
       </header>
 
-      {/* Collapsible sections */}
+      {/* Sections */}
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-3">
-          <CollapsibleSection
-            title="Context History"
-            badge={String(detail.context.length)}
-            defaultOpen
-          >
-            <ContextHistory events={detail.context} />
-          </CollapsibleSection>
-
-          {detail.plan && (
-            <CollapsibleSection title="Plan">
-              <JsonPanel label="plan" data={detail.plan} />
-            </CollapsibleSection>
+          {visibleSections.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">No activity yet.</p>
           )}
+          {visibleSections.map((section) => {
+            const events = eventsByType[section.eventType] ?? [];
+            const jsonData =
+              section.jsonField != null
+                ? (detail[section.jsonField] as Record<string, unknown> | null)
+                : null;
+            const badge = events.length > 0 ? String(events.length) : undefined;
 
-          {detail.test_spec && (
-            <CollapsibleSection title="Tests">
-              <JsonPanel label="test spec" data={detail.test_spec} />
-            </CollapsibleSection>
-          )}
-
-          {detail.implementation && (
-            <CollapsibleSection title="Implementation">
-              <JsonPanel label="implementation" data={detail.implementation} />
-            </CollapsibleSection>
-          )}
-
-          {detail.review && (
-            <CollapsibleSection title="Review">
-              <JsonPanel label="review" data={detail.review} />
-            </CollapsibleSection>
-          )}
+            return (
+              <CollapsibleSection
+                key={section.key}
+                title={section.title}
+                icon={section.icon}
+                color={section.color}
+                badge={badge}
+                defaultOpen
+              >
+                <ContextHistory events={events} />
+                {events.length > 0 && jsonData && (
+                  <div className="mx-4 border-t border-border/50 mb-3" />
+                )}
+                {jsonData && (
+                  <JsonPanel label={section.title.toLowerCase()} data={jsonData} />
+                )}
+              </CollapsibleSection>
+            );
+          })}
         </div>
       </ScrollArea>
     </div>
@@ -172,7 +254,6 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       {/* Sidebar */}
       <aside className="w-96 shrink-0 border-r border-border flex flex-col">
-        {/* Header */}
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <Activity className="h-5 w-5 text-primary shrink-0" />
@@ -192,7 +273,6 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
           </Button>
         </div>
 
-        {/* Filters */}
         <div className="px-4 py-3 border-b border-border space-y-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -227,16 +307,13 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
           </p>
         </div>
 
-        {/* Session list */}
         <ScrollArea className="flex-1">
           <div className="p-3 space-y-2">
             {isLoading && (
               <p className="text-sm text-muted-foreground text-center py-8">Loading…</p>
             )}
             {!isLoading && sessions.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No sessions found.
-              </p>
+              <p className="text-sm text-muted-foreground text-center py-8">No sessions found.</p>
             )}
             {sessions.map((session) => (
               <SessionCard
@@ -249,7 +326,6 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
           </div>
         </ScrollArea>
 
-        {/* Pagination */}
         {pageCount > 1 && (
           <div className="px-4 py-3 border-t border-border flex items-center justify-between">
             <Button
@@ -261,9 +337,7 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             >
               ← Prev
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {page} / {pageCount}
-            </span>
+            <span className="text-xs text-muted-foreground">{page} / {pageCount}</span>
             <Button
               variant="outline"
               size="sm"
@@ -285,7 +359,7 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
             <p className="text-lg font-medium opacity-50">Select a session to view</p>
           </div>
         ) : error ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+          <div className="flex-1 flex flex-col items-center justify-center">
             <p className="text-sm text-destructive">{error}</p>
           </div>
         ) : !detail ? (
