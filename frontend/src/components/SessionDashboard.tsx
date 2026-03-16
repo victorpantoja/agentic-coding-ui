@@ -317,7 +317,9 @@ interface Props {
 }
 
 export function SessionDashboard({ darkMode, onToggleDark }: Props) {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(
+    () => window.location.hash.slice(1) || null
+  );
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -416,7 +418,10 @@ export function SessionDashboard({ darkMode, onToggleDark }: Props) {
                 key={session.id}
                 session={session}
                 active={session.id === activeId}
-                onClick={() => setActiveId(session.id)}
+                onClick={() => {
+                  setActiveId(session.id);
+                  window.location.hash = session.id;
+                }}
               />
             ))}
           </div>
