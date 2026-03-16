@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSessionWebSocket } from "@/hooks/useWebSocket";
 import { cn, formatRelativeDate, statusColor } from "@/lib/utils";
-import type { ContextEvent, SessionDetail, SessionStep } from "@/types";
+import type { ContextEvent, SessionDetail, SessionStep, TaskHistoryEntry } from "@/types";
 
 const PAGE_SIZE = 20;
 const ACTIVE_STATUSES = new Set(["active", "testing", "implementing", "reviewing"]);
@@ -147,6 +147,70 @@ function CollapsibleSection({
   );
 }
 
+function TaskHistoryPanel({ entries }: { entries: TaskHistoryEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="p-4 space-y-3 border-t border-border/50">
+      {entries.map((entry) => {
+        const lintOutput = entry.lint_output as { passed?: boolean; issues?: string[] };
+        const archOutput = entry.arch_output as { passed?: boolean; violations?: string[] };
+        const lintPassed = lintOutput.passed ?? false;
+        const archPassed = archOutput.passed ?? false;
+        const lintIssues = lintOutput.issues ?? [];
+        const archViolations = archOutput.violations ?? [];
+        return (
+          <div key={entry.iteration} className="rounded-md border border-border bg-muted/10 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium">Iteration {entry.iteration}</span>
+              <span
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                  entry.is_approved
+                    ? "bg-green-500/15 text-green-600 dark:text-green-400"
+                    : "bg-destructive/15 text-destructive"
+                )}
+              >
+                {entry.is_approved ? "approved" : "rejected"}
+              </span>
+            </div>
+            <div className="flex gap-4 text-xs">
+              <span className={cn("flex items-center gap-1", lintPassed ? "text-green-600 dark:text-green-400" : "text-destructive")}>
+                {lintPassed ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                Lint{!lintPassed && lintIssues.length > 0 ? ` (${lintIssues.length})` : ""}
+              </span>
+              <span className={cn("flex items-center gap-1", archPassed ? "text-green-600 dark:text-green-400" : "text-destructive")}>
+                {archPassed ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                Architecture{!archPassed && archViolations.length > 0 ? ` (${archViolations.length})` : ""}
+              </span>
+            </div>
+            {entry.lessons_learned && (
+              <p className="text-[11px] text-muted-foreground italic">{entry.lessons_learned}</p>
+            )}
+            {entry.reviewer_critique && (
+              <details>
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
+                  Critique ↓
+                </summary>
+                <p className="mt-1 text-xs text-foreground/80 whitespace-pre-wrap">{entry.reviewer_critique}</p>
+              </details>
+            )}
+            {entry.diff && (
+              <details>
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
+                  Diff ↓
+                </summary>
+                <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] bg-muted/30 border border-border/50 rounded p-2 overflow-x-auto">
+                  {entry.diff}
+                </pre>
+              </details>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SessionDetailPanel({
   detail,
   connected,
@@ -218,6 +282,8 @@ function SessionDetailPanel({
 
             const step = section.stepName ? stepByName[section.stepName] : undefined;
 
+            const isReview = section.key === "review";
+
             return (
               <CollapsibleSection
                 key={section.key}
@@ -235,6 +301,7 @@ function SessionDetailPanel({
                 {jsonData && (
                   <JsonPanel label={section.title.toLowerCase()} data={jsonData} />
                 )}
+                {isReview && <TaskHistoryPanel entries={detail.task_history} />}
               </CollapsibleSection>
             );
           })}

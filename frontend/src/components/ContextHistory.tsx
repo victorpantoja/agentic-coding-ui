@@ -25,10 +25,20 @@ function EventBlock({ event }: { event: ContextEvent }) {
 
   return (
     <div className="pb-6 last:pb-0">
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
         <Badge className="text-[10px] px-1.5 py-0 bg-muted text-muted-foreground border-0">
           {ts}
         </Badge>
+        {event.agent && (
+          <Badge className="text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-0">
+            {event.agent}
+          </Badge>
+        )}
+        {event.duration_ms != null && (
+          <Badge className="text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-0">
+            {event.duration_ms}ms
+          </Badge>
+        )}
       </div>
       {event.summary && (
         <p className="text-sm text-foreground/80 mb-2">{event.summary}</p>

@@ -11,6 +11,19 @@ export interface ContextEvent {
   event_type: string;
   data: Record<string, unknown>;
   summary: string;
+  agent: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface TaskHistoryEntry {
+  iteration: number;
+  reviewer_critique: string;
+  diff: string;
+  lint_output: Record<string, unknown>;
+  arch_output: Record<string, unknown>;
+  is_approved: boolean;
+  lessons_learned: string;
   created_at: string;
 }
 
@@ -36,4 +49,5 @@ export interface SessionDetail {
   updated_at: string;
   context: ContextEvent[];
   steps: SessionStep[];
+  task_history: TaskHistoryEntry[];
 }

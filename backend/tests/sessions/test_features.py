@@ -27,6 +27,19 @@ _CONTEXT_ROW = {
     "event_type": "plan",
     "data": {"agent": "architect"},
     "summary": "session started",
+    "agent": "orchestrator",
+    "duration_ms": None,
+    "created_at": NOW,
+}
+
+_HISTORY_ROW = {
+    "iteration": 1,
+    "reviewer_critique": "needs work",
+    "diff": "--- a\n+++ b",
+    "lint_output": {"passed": False, "issues": ["E501"]},
+    "arch_output": {"passed": True, "violations": []},
+    "is_approved": False,
+    "lessons_learned": "fix line length",
     "created_at": NOW,
 }
 
@@ -44,7 +57,7 @@ _STEP_ROW = {
 def _pool(fetchrow_return: object = None, fetch_side_effect: list[object] | None = None) -> MagicMock:
     p = MagicMock()
     p.fetchrow = AsyncMock(return_value=fetchrow_return)
-    p.fetch = AsyncMock(side_effect=fetch_side_effect or [[], []])
+    p.fetch = AsyncMock(side_effect=fetch_side_effect or [[], [], []])
     return p
 
 
@@ -88,13 +101,22 @@ async def test_list_sessions_passes_filters() -> None:
 # ── GetSessionFeature ─────────────────────────────────────────────────────────
 
 async def test_get_session_found() -> None:
-    pool = _pool(fetchrow_return=_SESSION_ROW, fetch_side_effect=[[_CONTEXT_ROW], [_STEP_ROW]])
+    pool = _pool(fetchrow_return=_SESSION_ROW, fetch_side_effect=[[_CONTEXT_ROW], [_STEP_ROW], []])
     result = await GetSessionFeature(pool=pool).handle(GetSessionFeature.Command(session_id="s1"))
     assert result.session.id == "s1"
     assert len(result.session.context) == 1
     assert result.session.context[0].event_type == "plan"
     assert len(result.session.steps) == 1
     assert result.session.steps[0].step_name == "plan"
+    assert result.session.task_history == []
+
+
+async def test_get_session_with_history() -> None:
+    pool = _pool(fetchrow_return=_SESSION_ROW, fetch_side_effect=[[], [], [_HISTORY_ROW]])
+    result = await GetSessionFeature(pool=pool).handle(GetSessionFeature.Command(session_id="s1"))
+    assert len(result.session.task_history) == 1
+    assert result.session.task_history[0].iteration == 1
+    assert result.session.task_history[0].is_approved is False
 
 
 async def test_get_session_not_found() -> None:
@@ -104,7 +126,8 @@ async def test_get_session_not_found() -> None:
 
 
 async def test_get_session_no_context_no_steps() -> None:
-    pool = _pool(fetchrow_return=_SESSION_ROW, fetch_side_effect=[[], []])
+    pool = _pool(fetchrow_return=_SESSION_ROW, fetch_side_effect=[[], [], []])
     result = await GetSessionFeature(pool=pool).handle(GetSessionFeature.Command(session_id="s1"))
     assert result.session.context == []
     assert result.session.steps == []
+    assert result.session.task_history == []

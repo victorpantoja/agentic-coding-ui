@@ -41,13 +41,25 @@ async def session_websocket(
 
         context = await queries.get_context_history(pool, session_id)
         steps = await queries.get_session_steps(pool, session_id)
+        task_history = await queries.get_task_history(pool, session_id)
         await websocket.send_json(
-            {"type": "session", "data": _to_jsonable({**row, "context": context, "steps": steps})}
+            {
+                "type": "session",
+                "data": _to_jsonable(
+                    {
+                        **row,
+                        "context": context,
+                        "steps": steps,
+                        "task_history": task_history,
+                    }
+                ),
+            }
         )
 
         last_context_count = len(context)
         last_status = row["status"]
         last_step_statuses = {s["step_name"]: s["status"] for s in steps}
+        last_history_count = len(task_history)
 
         while True:
             await asyncio.sleep(2)
@@ -65,6 +77,13 @@ async def session_websocket(
                 last_step_statuses = new_step_statuses
                 await websocket.send_json(
                     {"type": "steps", "data": _to_jsonable(new_steps)}
+                )
+
+            new_history = await queries.get_task_history(pool, session_id)
+            if len(new_history) > last_history_count:
+                last_history_count = len(new_history)
+                await websocket.send_json(
+                    {"type": "task_history", "data": _to_jsonable(new_history)}
                 )
 
             updated = await queries.get_session(pool, session_id)

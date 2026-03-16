@@ -97,7 +97,7 @@ async def get_context_history(
 ) -> list[dict[str, Any]]:
     rows = await pool.fetch(
         """
-        SELECT id::text, event_type, data, summary, created_at
+        SELECT id::text, event_type, data, summary, agent, duration_ms, created_at
         FROM context_history
         WHERE session_id = $1::uuid
         ORDER BY created_at ASC
@@ -109,5 +109,29 @@ async def get_context_history(
         d = dict(r)
         if isinstance(d.get("data"), str):
             d["data"] = json.loads(d["data"])
+        result.append(d)
+    return result
+
+
+async def get_task_history(
+    pool: asyncpg.Pool,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    rows = await pool.fetch(
+        """
+        SELECT iteration, reviewer_critique, diff,
+               lint_output, arch_output, is_approved, lessons_learned, created_at
+        FROM task_history
+        WHERE session_id = $1::uuid
+        ORDER BY iteration ASC
+        """,
+        session_id,
+    )
+    result = []
+    for r in rows:
+        d = dict(r)
+        for field in ("lint_output", "arch_output"):
+            if isinstance(d.get(field), str):
+                d[field] = json.loads(d[field])
         result.append(d)
     return result

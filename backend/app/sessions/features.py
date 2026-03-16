@@ -7,7 +7,13 @@ import asyncpg
 from app.common.features import BaseFeature
 from app.db import queries
 from app.sessions.exceptions import SessionNotFoundError
-from app.sessions.models import ContextEvent, SessionDetail, SessionStep, SessionSummary
+from app.sessions.models import (
+    ContextEvent,
+    SessionDetail,
+    SessionStep,
+    SessionSummary,
+    TaskHistoryEntry,
+)
 
 
 class ListSessionsFeature(BaseFeature):
@@ -58,7 +64,11 @@ class GetSessionFeature(BaseFeature):
             raise SessionNotFoundError(command.session_id)
         context_rows = await queries.get_context_history(self._pool, command.session_id)
         step_rows = await queries.get_session_steps(self._pool, command.session_id)
+        history_rows = await queries.get_task_history(self._pool, command.session_id)
         context = [ContextEvent(**r) for r in context_rows]
         steps = [SessionStep(**r) for r in step_rows]
-        session = SessionDetail(**{**row, "context": context, "steps": steps})
+        task_history = [TaskHistoryEntry(**r) for r in history_rows]
+        session = SessionDetail(
+            **{**row, "context": context, "steps": steps, "task_history": task_history}
+        )
         return self.Result(session=session)

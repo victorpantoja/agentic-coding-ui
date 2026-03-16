@@ -115,18 +115,69 @@ async def test_get_context_history_empty() -> None:
 
 
 async def test_get_context_history_with_events() -> None:
-    event = {"id": "eid", "event_type": "plan", "data": {}, "summary": "s", "created_at": NOW}
+    event = {
+        "id": "eid", "event_type": "plan", "data": {}, "summary": "s",
+        "agent": "orchestrator", "duration_ms": 500, "created_at": NOW,
+    }
     pool = _pool(fetch_return=[event])
     result = await queries.get_context_history(pool, "sid")
     assert len(result) == 1
     assert result[0]["event_type"] == "plan"
+    assert result[0]["agent"] == "orchestrator"
+    assert result[0]["duration_ms"] == 500
 
 
 async def test_get_context_history_jsonb_as_string() -> None:
-    event = {"id": "eid", "event_type": "plan", "data": '{"agent": "architect"}', "summary": "s", "created_at": NOW}
+    event = {
+        "id": "eid", "event_type": "plan", "data": '{"key": "val"}', "summary": "s",
+        "agent": None, "duration_ms": None, "created_at": NOW,
+    }
     pool = _pool(fetch_return=[event])
     result = await queries.get_context_history(pool, "sid")
-    assert result[0]["data"] == {"agent": "architect"}
+    assert result[0]["data"] == {"key": "val"}
+
+
+# ── get_task_history ──────────────────────────────────────────────────────────
+
+async def test_get_task_history_empty() -> None:
+    pool = _pool(fetch_return=[])
+    result = await queries.get_task_history(pool, "sid")
+    assert result == []
+
+
+async def test_get_task_history_with_rows() -> None:
+    row = {
+        "iteration": 1,
+        "reviewer_critique": "needs work",
+        "diff": "--- a\n+++ b",
+        "lint_output": {"passed": False, "issues": ["E501"]},
+        "arch_output": {"passed": True, "violations": []},
+        "is_approved": False,
+        "lessons_learned": "fix line length",
+        "created_at": NOW,
+    }
+    pool = _pool(fetch_return=[row])
+    result = await queries.get_task_history(pool, "sid")
+    assert len(result) == 1
+    assert result[0]["iteration"] == 1
+    assert result[0]["lint_output"] == {"passed": False, "issues": ["E501"]}
+
+
+async def test_get_task_history_jsonb_as_string() -> None:
+    row = {
+        "iteration": 1,
+        "reviewer_critique": "",
+        "diff": "",
+        "lint_output": '{"passed": true}',
+        "arch_output": '{"passed": true}',
+        "is_approved": True,
+        "lessons_learned": "",
+        "created_at": NOW,
+    }
+    pool = _pool(fetch_return=[row])
+    result = await queries.get_task_history(pool, "sid")
+    assert result[0]["lint_output"] == {"passed": True}
+    assert result[0]["arch_output"] == {"passed": True}
 
 
 # ── get_session_steps ─────────────────────────────────────────────────────────

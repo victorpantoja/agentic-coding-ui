@@ -29,6 +29,19 @@ class ContextEvent(BaseModel):
     event_type: str
     data: dict[str, Any]
     summary: str
+    agent: str | None = None
+    duration_ms: int | None = None
+    created_at: datetime
+
+
+class TaskHistoryEntry(BaseModel):
+    iteration: int
+    reviewer_critique: str
+    diff: str
+    lint_output: dict[str, Any]
+    arch_output: dict[str, Any]
+    is_approved: bool
+    lessons_learned: str
     created_at: datetime
 
 
@@ -44,3 +57,4 @@ class SessionDetail(BaseModel):
     updated_at: datetime
     context: list[ContextEvent] = []
     steps: list[SessionStep] = []
+    task_history: list[TaskHistoryEntry] = []
